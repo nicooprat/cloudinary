@@ -63,6 +63,18 @@ Cloudinary =
 			reader.readAsDataURL file
 
 	_upload_file: (file, ops={}, callback) ->
+		# Create collection document ID
+		collection_id = Random.id()
+
+		# Set fields
+		fields = _.extend ops.fields || {},
+			_id: collection_id
+			status: 'waiting'
+			preview: file
+
+		# Insert local preview
+		Cloudinary.collection.insert fields
+
 		Meteor.call "c.sign", ops, (error,result) ->
 			if not error
 				# Build form
@@ -72,23 +84,13 @@ Cloudinary =
 
 				form_data.append "file",file
 
-				# Create collection document ID
-				collection_id = Random.id()
-
 				# Send data
-				Cloudinary.xhr = new XMLHttpRequest()
-
-				# Set fields
-				fields = _.extend ops.fields || {},
-					_id: collection_id
-					status: 'uploading'
-					preview: file
-
-				Cloudinary.collection.insert fields						
+				Cloudinary.xhr = new XMLHttpRequest()			
 
 				Cloudinary.xhr.upload.addEventListener "progress", (event) ->
 						Cloudinary.collection.update _id:collection_id,
 							$set:
+								status: 'uploading'
 								loaded:event.loaded
 								total:event.total
 								percent_uploaded: Math.floor ((event.loaded / event.total) * 100)
@@ -132,6 +134,7 @@ Cloudinary =
 				Cloudinary.xhr.send form_data
 
 			else
+				Cloudinary.collection.remove collection_id
 				return callback and callback error,null
 
 
