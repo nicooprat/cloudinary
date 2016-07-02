@@ -67,8 +67,21 @@ Cloudinary =
 			reader.readAsDataURL file
 
 	_upload_file: (file, ops={}, callback) ->
+		# Create collection document ID
+		collection_id = Random.id()
+
+		# Set fields
+		fields = _.extend ops.fields || {},
+			_id: collection_id
+			status: 'waiting'
+			preview: file
+
+		# Insert local preview
+		Cloudinary.collection.insert fields
+
 		Meteor.call "c.sign", ops, (error,result) ->
 			if error
+				Cloudinary.collection.remove collection_id
 				return callback and callback error,null
 
 			# Build form
@@ -78,20 +91,13 @@ Cloudinary =
 
 			form_data.append "file",file
 
-			# Create collection document ID
-			collection_id = Random.id()
-
 			# Send data
 			Cloudinary.xhr = new XMLHttpRequest()
 
-			Cloudinary.collection.insert
-				_id:collection_id
-				status:"uploading"
-				preview:file
-
 			Cloudinary.xhr.upload.addEventListener "progress", (event) ->
-					Cloudinary.collection.update _id:collection_id,
+					Cloudinary.collection.update collection_id,
 						$set:
+							status: 'uploading'
 							loaded:event.loaded
 							total:event.total
 							percent_uploaded: Math.floor ((event.loaded / event.total) * 100)
@@ -100,7 +106,7 @@ Cloudinary =
 			Cloudinary.xhr.addEventListener "load", ->
 				if Cloudinary.xhr.status < 400
 					response = JSON.parse @response
-					Cloudinary.collection.upsert collection_id,
+					Cloudinary.collection.update collection_id,
 						$set:
 							status:"complete"
 							percent_uploaded: 100
@@ -109,7 +115,7 @@ Cloudinary =
 					callback and callback null,response
 				else
 					response = JSON.parse @response
-					Cloudinary.collection.upsert collection_id,
+					Cloudinary.collection.update collection_id,
 						$set:
 							status:"error"
 							response: response
@@ -118,7 +124,7 @@ Cloudinary =
 
 			Cloudinary.xhr.addEventListener "error", ->
 				response = JSON.parse @response
-				Cloudinary.collection.upsert collection_id,
+				Cloudinary.collection.update collection_id,
 					$set:
 						status:"error"
 						response: response
@@ -126,7 +132,7 @@ Cloudinary =
 				callback and callback response,null
 
 			Cloudinary.xhr.addEventListener "abort", ->
-				Cloudinary.collection.upsert collection_id,
+				Cloudinary.collection.update collection_id,
 					$set:
 						status:"aborted"
 
